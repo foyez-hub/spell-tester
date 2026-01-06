@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spelling Hero: Battle Log Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Open+Sans:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --yellow: #ffde03; --blue: #0336ff; --red: #ff0266; --black: #000000; --green: #00e676;
+        }
+
+        body {
+            background-color: #f0f0f0;
+            background-image: radial-gradient(var(--black) 1px, transparent 0);
+            background-size: 20px 20px;
+            font-family: 'Open Sans', sans-serif;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; margin: 0;
+        }
+
+        .comic-container {
+            background: white; border: 4px solid var(--black);
+            box-shadow: 10px 10px 0px var(--black);
+            width: 90%; max-width: 600px; padding: 20px; transform: rotate(-1deg);
+            z-index: 2;
+        }
+
+        h1 {
+            font-family: 'Bangers', cursive; font-size: 3.5rem; color: var(--blue);
+            text-align: center; text-shadow: 3px 3px 0px var(--red); margin: 10px 0;
+        }
+
+        .setup-zone, .game-zone { display: flex; flex-direction: column; gap: 15px; }
+
+        textarea { border: 3px solid var(--black); padding: 10px; min-height: 100px; font-family: inherit; }
+
+        button {
+            font-family: 'Bangers', cursive; font-size: 1.5rem; padding: 10px;
+            cursor: pointer; border: 3px solid var(--black); transition: 0.1s;
+        }
+
+        .btn-main { background: var(--yellow); }
+        .btn-listen { background: var(--blue); color: white; margin-bottom: 10px; }
+        .btn-log { background: var(--black); color: white; font-size: 1rem; margin-top: 20px; width: 100%; }
+
+        button:hover { transform: scale(1.02); }
+        button:active { transform: translateY(4px); }
+
+        .hidden { display: none; }
+
+        .speech-bubble {
+            background: white; border: 3px solid var(--black);
+            padding: 20px; border-radius: 50px; text-align: center; margin-bottom: 10px; position: relative;
+        }
+
+        input[type="text"] {
+            font-size: 2rem; padding: 10px; border: 3px solid var(--black); text-align: center;
+            width: calc(100% - 26px);
+        }
+
+        .stats {
+            display: flex; justify-content: space-between;
+            font-family: 'Bangers', cursive; font-size: 1.8rem; color: var(--red);
+        }
+
+        #feedback {
+            font-family: 'Bangers', cursive; font-size: 1.5rem; text-align: center; height: 30px;
+        }
+
+        .reveal-box {
+            background: var(--red); color: white;
+            padding: 10px; text-align: center; font-weight: bold; border: 2px solid black;
+        }
+
+        /* Battle Log Styles */
+        #battleLog {
+            margin-top: 20px; background: white; border: 3px solid black;
+            padding: 15px; width: 90%; max-width: 500px; box-shadow: 5px 5px 0px var(--blue);
+        }
+        .log-title { font-family: 'Bangers'; font-size: 1.5rem; border-bottom: 2px solid black; margin-bottom: 10px; }
+        .log-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #ccc; }
+        .wrong-count { color: var(--red); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="comic-container">
+    <h1>POW! SPELL IT!</h1>
+
+    <div id="setup" class="setup-zone">
+        <p><strong>MISSION:</strong> Paste words (comma or column) below!</p>
+        <textarea id="wordInput" placeholder="hero, lightning, zap..."></textarea>
+        <button class="btn-main" onclick="startGame()">START MISSION!</button>
+    </div>
+
+    <div id="game" class="game-zone hidden">
+        <div class="stats">
+            <span>SCORE: <span id="score">0</span></span>
+            <span style="color: var(--blue)">LEFT: <span id="remaining">0</span></span>
+        </div>
+        
+        <div id="feedback"></div>
+
+        <div class="speech-bubble">
+            <button class="btn-listen" onclick="speakWord()">CLICK TO LISTEN! 🔊</button>
+            <div id="reveal" class="reveal-box hidden"></div>
+        </div>
+
+        <input type="text" id="userInput" placeholder="Type here..." autocomplete="off">
+        
+        <button class="btn-main" onclick="checkSpelling()">CHECK! 💥</button>
+        <button onclick="skipWord()" style="background: #eee; font-size: 1rem; border: 2px solid black;">SKIP (-5 POINTS)</button>
+        
+        <button class="btn-log" onclick="toggleLog()">VIEW BATTLE LOG (MISTAKES)</button>
+    </div>
+</div>
+
+<div id="battleLog" class="hidden">
+    <div class="log-title">WORDS TO RE-LEARN:</div>
+    <div id="logContent"></div>
+</div>
+
+<script>
+    let masterList = [];
+    let mistakeQueue = {}; // Tracks word and how many times missed
+    let currentWord = "";
+    let score = 0;
+
+    function startGame() {
+        const input = document.getElementById('wordInput').value;
+        masterList = input.split(/[,\n]+/).map(w => w.trim()).filter(w => w.length > 0);
+
+        if (masterList.length === 0) {
+            alert("Enter some words first, Hero!");
+            return;
+        }
+
+        document.getElementById('setup').classList.add('hidden');
+        document.getElementById('game').classList.remove('hidden');
+        nextWord();
+    }
+
+    function nextWord() {
+        if (masterList.length === 0) {
+            document.getElementById('game').innerHTML = "<h1>VICTORY!</h1><p>Mission Complete!</p><button class='btn-main' onclick='location.reload()'>RESTART</button>";
+            return;
+        }
+
+        const randomIndex = Math.floor(Math.random() * masterList.length);
+        currentWord = masterList[randomIndex];
+        
+        document.getElementById('remaining').innerText = masterList.length;
+        document.getElementById('userInput').value = "";
+        document.getElementById('reveal').classList.add('hidden');
+        document.getElementById('feedback').innerText = "";
+        document.getElementById('userInput').focus();
+        speakWord();
+    }
+
+    function speakWord() {
+        window.speechSynthesis.cancel(); // Stop current speaking
+        const msg = new SpeechSynthesisUtterance(currentWord);
+        msg.rate = 0.85;
+        window.speechSynthesis.speak(msg);
+    }
+
+    function toggleLog() {
+        const log = document.getElementById('battleLog');
+        log.classList.toggle('hidden');
+        updateLogUI();
+    }
+
+    function updateLogUI() {
+        const content = document.getElementById('logContent');
+        content.innerHTML = "";
+        
+        const keys = Object.keys(mistakeQueue);
+        if (keys.length === 0) {
+            content.innerHTML = "No mistakes yet! You're a hero!";
+            return;
+        }
+
+        keys.forEach(word => {
+            const div = document.createElement('div');
+            div.className = 'log-item';
+            div.innerHTML = `<span>${word}</span> <span class="wrong-count">Missed: ${mistakeQueue[word]}x</span>`;
+            content.appendChild(div);
+        });
+    }
+
+    function handleWrong(penalty) {
+        score = Math.max(0, score - penalty);
+        document.getElementById('score').innerText = score;
+        
+        // Track the mistake
+        mistakeQueue[currentWord] = (mistakeQueue[currentWord] || 0) + 1;
+        updateLogUI();
+
+        // Show correct spelling
+        const reveal = document.getElementById('reveal');
+        reveal.innerText = "LOOK CLOSELY: " + currentWord.toUpperCase();
+        reveal.classList.remove('hidden');
+
+        // Re-insert into list to ensure it comes back
+        masterList.push(currentWord);
+        masterList.splice(masterList.indexOf(currentWord), 1);
+
+        setTimeout(nextWord, 3000);
+    }
+
+    function checkSpelling() {
+        const userAttempt = document.getElementById('userInput').value.toLowerCase().trim();
+        const feedback = document.getElementById('feedback');
+
+        if (userAttempt === currentWord.toLowerCase()) {
+            score += 10;
+            document.getElementById('score').innerText = score;
+            feedback.style.color = "var(--green)";
+            feedback.innerText = "ZAP! CORRECT!";
+            
+            masterList.splice(masterList.indexOf(currentWord), 1);
+            setTimeout(nextWord, 1000);
+        } else {
+            feedback.style.color = "var(--red)";
+            feedback.innerText = "CLANG! WRONG! -2 PTS";
+            handleWrong(2);
+        }
+    }
+
+    function skipWord() {
+        document.getElementById('feedback').innerText = "SKIPPED! -5 PTS";
+        handleWrong(5);
+    }
+
+    document.getElementById("userInput").addEventListener("keyup", (e) => {
+        if (e.key === "Enter") checkSpelling();
+    });
+</script>
+</body>
+</html>
